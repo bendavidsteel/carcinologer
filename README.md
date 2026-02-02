@@ -9,6 +9,7 @@ API-based scraper and analysis library for [Moltbook](https://www.moltbook.com) 
 - ✅ Fetches submolt metadata and statistics
 - ✅ Gets agent leaderboard
 - ✅ Optional: Fetch all comments for all posts
+- ✅ **Semantic search** for posts and comments
 - ✅ Handles pagination automatically
 - ✅ Respects rate limits
 - ✅ Saves data to JSON files
@@ -120,6 +121,11 @@ with MoltbookAPI(api_key="your_key") as api:
     # Get comments for a post (returns list of Comment objects)
     comments = api.get_post_comments(post_id)
 
+    # Semantic search for posts and comments
+    results = api.search("how do agents handle memory")
+    for r in results:
+        print(f"{r.type}: {r.content[:100]}... (similarity: {r.similarity:.2f})")
+
 # Or scrape everything at once
 from carcinologer.api import scrape_all_data
 
@@ -165,6 +171,7 @@ The scraper uses the official Moltbook API:
 | `GET /submolts/{name}/feed` | Get posts from a submolt |
 | `GET /posts/{id}/comments` | Get comments for a post |
 | `GET /agents/leaderboard` | Get agent rankings |
+| `GET /search?q=...&type=all` | Semantic search for posts and comments |
 
 ## Notes
 

@@ -3,12 +3,16 @@ Moltbook Scraper
 
 A scraper for moltbook.com - the social network for AI agents.
 
-API Endpoints discovered:
+API Endpoints:
 - GET /api/v1/submolts - List all communities
 - GET /api/v1/agents/leaderboard - Agent rankings
+- GET /api/v1/posts - Get posts from main feed
+- GET /api/v1/submolts/{name}/feed - Get posts from a submolt
+- GET /api/v1/posts/{id}/comments - Get comments for a post
+- GET /api/v1/search - Semantic search for posts and comments
 
 Limitations:
-- Individual submolt pages (/m/{name}) require authentication to view posts
+- Most endpoints require authentication (API key)
 - The /m page (communities listing) is publicly accessible
 """
 
@@ -107,16 +111,37 @@ class Comment:
         return asdict(self)
 
 
+@dataclass
+class SearchResult:
+    """A search result from Moltbook semantic search."""
+    id: str
+    type: str  # "post" or "comment"
+    content: str
+    author: dict
+    upvotes: int
+    downvotes: int
+    created_at: str
+    similarity: float
+    post_id: str
+    title: Optional[str] = None
+    submolt: Optional[dict] = None
+    post: Optional[dict] = None
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
 class MoltbookAPI:
     """
     API client for moltbook.com public endpoints.
 
     Example usage:
-        with MoltbookAPI() as api:
+        with MoltbookAPI(api_key="your_key") as api:
             submolts = api.get_submolts()
             stats = api.get_stats()
             leaderboard = api.get_leaderboard()
             posts = api.get_all_posts()
+            results = api.search("how do agents handle memory")
     """
 
     def __init__(self, api_key: Optional[str] = None, max_retries: int = 3, retry_delay: float = 2.0):
@@ -343,6 +368,62 @@ class MoltbookAPI:
 
         return comments
 
+    def search(
+        self,
+        query: str,
+        type: str = "all",
+        limit: int = 20,
+    ) -> list[SearchResult]:
+        """
+        Semantic search for posts and comments.
+
+        Uses AI-powered semantic search to find content by meaning,
+        not just keyword matching.
+
+        Args:
+            query: Natural language search query (max 500 chars)
+            type: What to search - 'posts', 'comments', or 'all'
+            limit: Max results (default 20, max 50)
+
+        Returns:
+            List of SearchResult objects sorted by similarity
+        """
+        from urllib.parse import urlencode
+
+        params = {
+            "q": query[:500],
+            "type": type,
+            "limit": min(limit, 50),
+        }
+
+        r = self._request("GET", f"{API_BASE}/search?{urlencode(params)}")
+
+        if r.status_code == 401 and not self.api_key:
+            print("  Note: Search endpoint requires authentication.")
+            return []
+
+        r.raise_for_status()
+        data = r.json()
+
+        results = []
+        for item in data.get("results", []):
+            results.append(SearchResult(
+                id=item["id"],
+                type=item["type"],
+                title=item.get("title"),
+                content=item["content"],
+                upvotes=item["upvotes"],
+                downvotes=item["downvotes"],
+                created_at=item["created_at"],
+                similarity=item["similarity"],
+                author=item["author"],
+                submolt=item.get("submolt"),
+                post=item.get("post"),
+                post_id=item["post_id"],
+            ))
+
+        return results
+
     def get_all_posts(self, sort: str = "new", max_posts: Optional[int] = None) -> list[Post]:
         """
         Fetch all posts from the main feed with pagination.
@@ -494,7 +575,7 @@ class MoltbookBrowser:
         }
 
 
-def scrape_all_data(api_key: Optional[str] = None, include_comments: bool = False, sort: str = "new") -> dict:
+def scrape_all_data(api_key: Optional[str] = None, include_comments: bool = False, sort: str = "new", max_posts: Optional[int] = None) -> dict:
     """
     Scrape all data from Moltbook.
 
@@ -502,6 +583,7 @@ def scrape_all_data(api_key: Optional[str] = None, include_comments: bool = Fals
         api_key: Moltbook API key (required for posts)
         include_comments: Whether to fetch comments for each post
         sort: Sort method for posts - 'new', 'hot', 'top', or 'rising'
+        max_posts: Maximum number of posts to fetch (None = all)
 
     Returns:
         dict with keys: stats, submolts, agents, all_posts, submolt_posts, comments
@@ -567,7 +649,7 @@ def scrape_all_data(api_key: Optional[str] = None, include_comments: bool = Fals
         # Get all posts from main feed
         print(f"\n[4/5] Getting all posts from main feed (sort={sort})...")
         try:
-            all_posts = api.get_all_posts(sort=sort)
+            all_posts = api.get_all_posts(sort=sort, max_posts=max_posts)
             result["all_posts"] = [p.to_dict() for p in all_posts]
             print(f"  Total posts collected: {len(all_posts)}")
         except Exception as e:
