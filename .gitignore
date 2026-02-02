@@ -5,11 +5,17 @@ __pycache__/
 .venv/
 venv/
 *.egg-info/
+dist/
+build/
 
-# Output files
-*.json
-*.txt
-*.html
+# Data directories
+data/
+output/
+examples/output/
+
+# Credentials
+credentials.json
+.env
 
 # IDE
 .idea/
