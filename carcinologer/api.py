@@ -120,7 +120,7 @@ class SearchResult:
     upvotes: int
     downvotes: int
     created_at: str
-    similarity: float
+    relevance: float
     post_id: str
     title: Optional[str] = None
     submolt: Optional[dict] = None
@@ -165,41 +165,62 @@ class MoltbookAPI:
             try:
                 r = self.client.request(method, url)
                 if r.status_code in (429, 500, 502, 503, 504):
-                    wait = self.retry_delay * (attempt + 1)
+                    wait = self.retry_delay * (2 ** attempt)
                     time.sleep(wait)
+                    last_error = r
                     continue
                 return r
             except httpx.TimeoutException as e:
                 last_error = e
-                time.sleep(self.retry_delay * (attempt + 1))
+                time.sleep(self.retry_delay * (2 ** attempt))
+        if isinstance(last_error, httpx.Response):
+            return last_error
         if last_error:
             raise last_error
         return r
 
-    def get_submolts(self) -> list[Submolt]:
+    def get_submolts(self, limit: int = 100, max_pages: Optional[int] = None) -> list[Submolt]:
         """
-        Get all submolts (communities).
+        Get all submolts (communities) with pagination.
+
+        Args:
+            limit: Number of submolts per page (max 100)
+            max_pages: Maximum number of pages to fetch (None = all)
 
         Returns:
             List of Submolt objects
         """
-        r = self._request("GET", f"{API_BASE}/submolts")
-        r.raise_for_status()
-        data = r.json()
-
         submolts = []
-        for s in data.get("submolts", []):
-            submolts.append(Submolt(
-                id=s["id"],
-                name=s["name"],
-                display_name=s["display_name"],
-                description=s["description"],
-                subscriber_count=s["subscriber_count"],
-                created_at=s["created_at"],
-                last_activity_at=s.get("last_activity_at"),
-                featured_at=s.get("featured_at"),
-                created_by=s.get("created_by"),
-            ))
+        page = 1
+
+        while True:
+            r = self._request("GET", f"{API_BASE}/submolts?limit={min(limit, 100)}&page={page}")
+            r.raise_for_status()
+            data = r.json()
+
+            batch = data.get("submolts", [])
+            if not batch:
+                break
+
+            for s in batch:
+                submolts.append(Submolt(
+                    id=s["id"],
+                    name=s["name"],
+                    display_name=s.get("display_name", s["name"]),
+                    description=s.get("description", ""),
+                    subscriber_count=s.get("subscriber_count", 0),
+                    created_at=s["created_at"],
+                    last_activity_at=s.get("last_activity_at"),
+                    featured_at=s.get("featured_at"),
+                    created_by=s.get("created_by"),
+                ))
+
+            if max_pages and page >= max_pages:
+                break
+
+            page += 1
+            time.sleep(self.retry_delay)
+
         return submolts
 
     def get_leaderboard(self) -> list[Agent]:
@@ -314,10 +335,11 @@ class MoltbookAPI:
 
         posts = []
         for p in data.get("posts", []):
+            submolt = p.get("submolt") or {"name": p.get("submolt_name", submolt_name)}
             posts.append(Post(
                 id=p["id"],
                 title=p["title"],
-                submolt=p["submolt"],
+                submolt=submolt,
                 author=p["author"],
                 upvotes=p["upvotes"],
                 downvotes=p["downvotes"],
@@ -414,7 +436,7 @@ class MoltbookAPI:
                 upvotes=item["upvotes"],
                 downvotes=item["downvotes"],
                 created_at=item["created_at"],
-                similarity=item["similarity"],
+                relevance=item["relevance"],
                 author=item["author"],
                 submolt=item.get("submolt"),
                 post=item.get("post"),
@@ -460,6 +482,91 @@ class MoltbookAPI:
                 break
 
             time.sleep(0.5)  # Rate limiting
+
+        return all_posts
+
+    def get_agent_posts(self, agent_name: str, sort: str = "new", limit: int = 100, cursor: Optional[str] = None) -> dict:
+        """
+        Get posts by a specific agent.
+
+        Args:
+            agent_name: Name of the agent
+            sort: Sort order - 'hot', 'new', 'top', 'rising'
+            limit: Number of posts to fetch (max 100)
+            cursor: Cursor for pagination
+
+        Returns:
+            Dict with 'posts' list, 'next_cursor', and 'has_more'
+        """
+        from urllib.parse import urlencode
+
+        params = {"agent": agent_name, "sort": sort, "limit": min(limit, 100)}
+        if cursor:
+            params["cursor"] = cursor
+
+        r = self._request("GET", f"{API_BASE}/posts?{urlencode(params)}")
+
+        if r.status_code == 401 and not self.api_key:
+            return {"posts": [], "next_cursor": None, "has_more": False}
+
+        r.raise_for_status()
+        data = r.json()
+
+        posts = []
+        for p in data.get("posts", []):
+            posts.append(Post(
+                id=p["id"],
+                title=p["title"],
+                submolt=p["submolt"],
+                author=p["author"],
+                upvotes=p["upvotes"],
+                downvotes=p["downvotes"],
+                comment_count=p["comment_count"],
+                created_at=p["created_at"],
+                content=p.get("content"),
+                url=p.get("url"),
+                is_pinned=p.get("is_pinned", False),
+            ))
+
+        return {
+            "posts": posts,
+            "next_cursor": data.get("next_cursor"),
+            "has_more": data.get("has_more", False),
+        }
+
+    def get_all_agent_posts(self, agent_name: str, sort: str = "new", max_posts: Optional[int] = None) -> list[Post]:
+        """
+        Fetch all posts by a specific agent with pagination.
+
+        Args:
+            agent_name: Name of the agent
+            sort: Sort order
+            max_posts: Maximum number of posts to fetch (None = all)
+
+        Returns:
+            List of all Post objects by the agent
+        """
+        all_posts = []
+        cursor = None
+
+        while True:
+            result = self.get_agent_posts(agent_name, sort=sort, limit=100, cursor=cursor)
+            posts = result["posts"]
+
+            if not posts:
+                break
+
+            all_posts.extend(posts)
+
+            if max_posts and len(all_posts) >= max_posts:
+                all_posts = all_posts[:max_posts]
+                break
+
+            if not result.get("has_more") or not result.get("next_cursor"):
+                break
+
+            cursor = result["next_cursor"]
+            time.sleep(0.5)
 
         return all_posts
 

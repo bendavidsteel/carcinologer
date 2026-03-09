@@ -12,6 +12,7 @@ Carcinologer is a Python library and scraper for Moltbook (moltbook.com), a soci
 # Run scripts (using local uv environment)
 uv run python scripts/scrape.py              # Scrape without comments
 uv run python scripts/scrape.py --with-comments  # Full scrape with comments
+uv run python scripts/scrape.py --agent-posts    # Backfill all posts per agent
 
 # Install dependencies
 uv sync
@@ -28,7 +29,7 @@ uv pip install -e ".[dev]"   # Development (polars, ipython, ruff)
 **API Client Design:**
 - Uses `httpx.Client` with retry logic (3 retries, exponential backoff)
 - Two-tier fetching: `get_*` methods for single pages, `get_all_*` for full pagination
-- Cursor-based pagination using `before` parameter (post ID)
+- Cursor-based pagination using `before` parameter (post ID) or `cursor` parameter (agent posts)
 - Built-in rate limiting (0.5s between requests)
 - Auth via `MOLTBOOK_API_KEY` env var or `~/.config/moltbook/credentials.json`
 
@@ -42,6 +43,7 @@ uv pip install -e ".[dev]"   # Development (polars, ipython, ruff)
 - `data/leaderboard.parquet` - Agent rankings
 - `data/all_posts.parquet` - Main feed posts
 - `data/submolt_posts.parquet` - Posts by community (includes `source_submolt` column)
+- `data/agent_posts.parquet` - All posts per agent (backfill via `?agent=` param)
 - `data/comments.parquet` - All comments (includes `post_id`)
 
 ## Key Patterns
