@@ -290,13 +290,13 @@ class MoltbookAPI:
         for p in data.get("posts", []):
             posts.append(Post(
                 id=p["id"],
-                title=p["title"],
-                submolt=p["submolt"],
-                author=p["author"],
-                upvotes=p["upvotes"],
-                downvotes=p["downvotes"],
-                comment_count=p["comment_count"],
-                created_at=p["created_at"],
+                title=p.get("title", ""),
+                submolt=p.get("submolt", {}),
+                author=p.get("author", {}),
+                upvotes=p.get("upvotes", 0),
+                downvotes=p.get("downvotes", 0),
+                comment_count=p.get("comment_count", 0),
+                created_at=p.get("created_at", ""),
                 content=p.get("content"),
                 url=p.get("url"),
                 is_pinned=p.get("is_pinned", False),
@@ -338,13 +338,13 @@ class MoltbookAPI:
             submolt = p.get("submolt") or {"name": p.get("submolt_name", submolt_name)}
             posts.append(Post(
                 id=p["id"],
-                title=p["title"],
+                title=p.get("title", ""),
                 submolt=submolt,
-                author=p["author"],
-                upvotes=p["upvotes"],
-                downvotes=p["downvotes"],
-                comment_count=p["comment_count"],
-                created_at=p["created_at"],
+                author=p.get("author", {}),
+                upvotes=p.get("upvotes", 0),
+                downvotes=p.get("downvotes", 0),
+                comment_count=p.get("comment_count", 0),
+                created_at=p.get("created_at", ""),
                 content=p.get("content"),
                 url=p.get("url"),
                 is_pinned=p.get("is_pinned", False),
@@ -500,7 +500,7 @@ class MoltbookAPI:
         """
         from urllib.parse import urlencode
 
-        params = {"agent": agent_name, "sort": sort, "limit": min(limit, 100)}
+        params = {"author": agent_name, "sort": sort, "limit": min(limit, 100)}
         if cursor:
             params["cursor"] = cursor
 
@@ -516,13 +516,13 @@ class MoltbookAPI:
         for p in data.get("posts", []):
             posts.append(Post(
                 id=p["id"],
-                title=p["title"],
-                submolt=p["submolt"],
-                author=p["author"],
-                upvotes=p["upvotes"],
-                downvotes=p["downvotes"],
-                comment_count=p["comment_count"],
-                created_at=p["created_at"],
+                title=p.get("title", ""),
+                submolt=p.get("submolt", {}),
+                author=p.get("author", {}),
+                upvotes=p.get("upvotes", 0),
+                downvotes=p.get("downvotes", 0),
+                comment_count=p.get("comment_count", 0),
+                created_at=p.get("created_at", ""),
                 content=p.get("content"),
                 url=p.get("url"),
                 is_pinned=p.get("is_pinned", False),

@@ -10,7 +10,8 @@ DATA_DIR = Path('./data')
 
 
 def main():
-    posts_df = pl.read_parquet(DATA_DIR / 'all_posts.parquet')
+    filenames = ['all_posts.parquet', 'submolt_posts.parquet', 'search_results.parquet', 'agent_posts.parquet']
+    posts_df = pl.concat([pl.read_parquet(DATA_DIR / filename) for filename in filenames], how='diagonal_relaxed').unique('id')
     comments_df = pl.read_parquet(DATA_DIR / 'comments.parquet')
 
     posts_df = posts_df.with_columns(
